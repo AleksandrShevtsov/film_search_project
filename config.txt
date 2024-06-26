@@ -1,0 +1,2 @@
+'configSakila' : {'hostname': 'ich-db.ccegls0svc9m.eu-central-1.rds.amazonaws.com', 'user': 'ich1', 'password' : 'ich1_password_ilovedbs', 'database': 'sakila'},
+'configMybd' : {'hostname': 'mysql.itcareerhub.de', 'user': 'ich1', 'password': 'ich1_password_ilovedbs', 'database': 'project_220424ptm_OShevtsov'}
