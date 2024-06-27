@@ -1,46 +1,12 @@
 import mysql.connector
 import os
 from tabulate import tabulate
-import json
-
-# Файл, в который будут сохраняться категории и их ID
-CATEGORY_FILE = 'categories.json'
 
 
-def fetch_category_dict_and_save():
-    """Получение словаря категорий из базы данных и сохранение в файл"""
-    connection = ich_connect()
-    cursor = connection.cursor()
-    cursor.execute(query_dict('category_query'))
-    categories = cursor.fetchall()
-    cursor.close()
-    disconnect(connection)
-    
-    # Создаем словарь категорий ID -> название
-    category_dict = {str(category_id): name for category_id, name in categories}
-    
-    # Сохраняем словарь в файл
-    with open(CATEGORY_FILE, 'w', encoding='utf-8') as file:
-        json.dump(category_dict, file, ensure_ascii=False, indent=4)
-    
-    return category_dict
-
-
-def load_category_dict_from_file():
-    """Загрузка словаря категорий из файла"""
-    try:
-        with open(CATEGORY_FILE, 'r', encoding='utf-8') as file:
-            category_dict = json.load(file)
-    except FileNotFoundError:
-        category_dict = fetch_category_dict_and_save()  # Если файла нет, получаем из базы и сохраняем
-    
-    return category_dict
-
-
+# Переводит SQL-запросы на понятный язык и заменяет  поля на названия понятные для пользователя
 def translate_queries(queries, category_dict):
-    """Переводит SQL-запросы на понятный язык и заменяет ID категорий на их названия"""
     translations = {
-        'fc.category_id': 'категория',
+        'fc.category_id': 'Жанр',
         'f.title': 'название',
         'a.first_name': 'имя актера',
         'a.last_name': 'фамилия актера',
@@ -48,13 +14,29 @@ def translate_queries(queries, category_dict):
     }
     
     def clean_query(query):
-        for key, value in translations.items():
-            query = query.replace(key, value)
         query = query.replace('WHERE', '').replace('LIKE', '').replace(',', '').replace('%', '').strip()
-        query = query.replace('AND', 'и')
-        for cat_id, cat_name in category_dict.items():
-            query = query.replace(str(cat_id), cat_name)
-        return query
+        # Разбиваем запрос на части по "AND"
+        parts = query.split(' AND ')
+    
+        translated_parts = []
+        
+        for part in parts:
+            for key, value in translations.items():
+                if str(key) in part:
+                    part = part.replace(str(key), value)
+                    if 'Жанр' in part:
+                        part = part.split()
+                        print(category_dict)
+                        part[1] = category_dict.get(int(part[1]))
+                        print(part[1])
+                        part = ' '.join(part)
+            
+            translated_parts.append(part)
+        
+        # Соединяем обработанные части обратно в одну строку с "AND"
+        translated_query = ' AND '.join(translated_parts)
+        
+        return translated_query
     
     translated_queries = [clean_query(query) for query in queries]
     return translated_queries
@@ -136,25 +118,36 @@ def insert_query(query_key):
 
 def fetch_category_list():
     """Получение списка категорий и вывод его в виде таблицы"""
-    results = load_category_dict_from_file()
+    results = fetch_category_dict()
+    
+    # Преобразуем словарь категорий в список кортежей (ID, название)
+    category_tuples = [(category_id, name) for category_id, name in results.items()]
+    
+    # Разбиваем список категорий на колонки
     column_count = 4
-    row_count = len(results) // column_count + (len(results) % column_count > 0)
-    columns = [results[i * row_count:(i + 1) * row_count] for i in range(column_count)]
+    columns = [[] for _ in range(column_count)]
+    
+    for index, (category_id, name) in enumerate(category_tuples):
+        column_index = index % column_count
+        columns[column_index].append((category_id, name))
     
     tables = []
     headers = ['№', 'Жанр']
-    for col in columns:
-        tables.append(tabulate(col, headers=headers, tablefmt='rounded_grid'))
+    for col_index, col in enumerate(columns):
+        table = []
+        for row_index, (category_id, name) in enumerate(col, start=1):
+            table.append(["{}".format(category_id), name])
+        tables.append(tabulate(table, headers=headers, tablefmt='rounded_grid'))
     
     max_lines = max(len(table.split('\n')) for table in tables)
-    table_lines = [table.split('\n') for table in tables]
     
     for i in range(max_lines):
-        for table in table_lines:
-            if i < len(table):
-                print(table[i].ljust(30), end=' ')
+        for table in tables:
+            table_lines = table.split('\n')
+            if i < len(table_lines):
+                print(table_lines[i].ljust(20), end=' ')
             else:
-                print(' ' * 30, end=' ')
+                print(' ' * 20, end=' ')
         print()
     
     return results
@@ -238,7 +231,7 @@ def filter_selection_category_year() -> str:
     if '1' in user_choice:
         fetch_category_list()
         category_id = input('Выберите один из жанров цифрами: ')
-        filters.append("fc.category_id LIKE {}".format(int(category_id)))
+        filters.append("fc.category_id LIKE {}".format(category_id))
     if '2' in user_choice:
         year = input('Введите год выпуска: ')
         filters.append("f.release_year LIKE {}".format(year))
