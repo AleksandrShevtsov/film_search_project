@@ -3,45 +3,6 @@ import os
 from tabulate import tabulate
 
 
-# Переводит SQL-запросы на понятный язык и заменяет  поля на названия понятные для пользователя
-def translate_queries(queries, category_dict):
-    translations = {
-        'fc.category_id': 'Жанр',
-        'f.title': 'название',
-        'a.first_name': 'имя актера',
-        'a.last_name': 'фамилия актера',
-        'f.release_year': 'год выпуска'
-    }
-    
-    def clean_query(query):
-        query = query.replace('WHERE', '').replace('LIKE', '').replace(',', '').replace('%', '').strip()
-        # Разбиваем запрос на части по "AND"
-        parts = query.split(' AND ')
-    
-        translated_parts = []
-        
-        for part in parts:
-            for key, value in translations.items():
-                if str(key) in part:
-                    part = part.replace(str(key), value)
-                    if 'Жанр' in part:
-                        part = part.split()
-                        print(category_dict)
-                        part[1] = category_dict.get(int(part[1]))
-                        print(part[1])
-                        part = ' '.join(part)
-            
-            translated_parts.append(part)
-        
-        # Соединяем обработанные части обратно в одну строку с "AND"
-        translated_query = ' AND '.join(translated_parts)
-        
-        return translated_query
-    
-    translated_queries = [clean_query(query) for query in queries]
-    return translated_queries
-
-
 def mydb_connect():
     """Подключение к первой базе данных MySQL"""
     config = {
@@ -69,6 +30,47 @@ def ich_connect():
 def disconnect(connection):
     """Закрытие подключения к базе данных"""
     connection.close()
+
+
+
+
+# Переводит SQL-запросы на понятный язык и заменяет  поля на названия понятные для пользователя
+def translate_queries(queries, category_dict):
+    translations = {
+        'fc.category_id': 'Жанр',
+        'f.title': 'название',
+        'a.first_name': 'имя актера',
+        'a.last_name': 'фамилия актера',
+        'f.release_year': 'год выпуска'
+    }
+    
+    def clean_query(query):
+        query = query.replace('WHERE', '').replace('LIKE', '').replace(',', '').replace('%', '').strip()
+        # Разбиваем запрос на части по "AND"
+        parts = query.split(' AND ')
+        
+        translated_parts = []
+        
+        for part in parts:
+            for key, value in translations.items():
+                if str(key) in part:
+                    part = part.replace(str(key), value)
+                    if 'Жанр' in part:
+                        part = part.split()
+                        print(category_dict)
+                        part[1] = category_dict.get(int(part[1]))
+                        print(part[1])
+                        part = ' '.join(part)
+            
+            translated_parts.append(part)
+        
+        # Соединяем обработанные части обратно в одну строку с "AND"
+        translated_query = ' AND '.join(translated_parts)
+        
+        return translated_query
+    
+    translated_queries = [clean_query(query) for query in queries]
+    return translated_queries
 
 
 def query_dict(query_key) -> str:
