@@ -1,6 +1,63 @@
 import mysql.connector
 import os
 from tabulate import tabulate
+import json
+
+# Файл, в который будут сохраняться категории и их ID
+CATEGORY_FILE = 'categories.json'
+
+
+def fetch_category_dict_and_save():
+    """Получение словаря категорий из базы данных и сохранение в файл"""
+    connection = ich_connect()
+    cursor = connection.cursor()
+    cursor.execute(query_dict('category_query'))
+    categories = cursor.fetchall()
+    cursor.close()
+    disconnect(connection)
+    
+    # Создаем словарь категорий ID -> название
+    category_dict = {str(category_id): name for category_id, name in categories}
+    
+    # Сохраняем словарь в файл
+    with open(CATEGORY_FILE, 'w', encoding='utf-8') as file:
+        json.dump(category_dict, file, ensure_ascii=False, indent=4)
+    
+    return category_dict
+
+
+def load_category_dict_from_file():
+    """Загрузка словаря категорий из файла"""
+    try:
+        with open(CATEGORY_FILE, 'r', encoding='utf-8') as file:
+            category_dict = json.load(file)
+    except FileNotFoundError:
+        category_dict = fetch_category_dict_and_save()  # Если файла нет, получаем из базы и сохраняем
+    
+    return category_dict
+
+
+def translate_queries(queries, category_dict):
+    """Переводит SQL-запросы на понятный язык и заменяет ID категорий на их названия"""
+    translations = {
+        'fc.category_id': 'категория',
+        'f.title': 'название',
+        'a.first_name': 'имя актера',
+        'a.last_name': 'фамилия актера',
+        'f.release_year': 'год выпуска'
+    }
+    
+    def clean_query(query):
+        for key, value in translations.items():
+            query = query.replace(key, value)
+        query = query.replace('WHERE', '').replace('LIKE', '').replace(',', '').replace('%', '').strip()
+        query = query.replace('AND', 'и')
+        for cat_id, cat_name in category_dict.items():
+            query = query.replace(str(cat_id), cat_name)
+        return query
+    
+    translated_queries = [clean_query(query) for query in queries]
+    return translated_queries
 
 
 def mydb_connect():
@@ -55,29 +112,6 @@ def query_dict(query_key) -> str:
     return queries.get(query_key)
 
 
-def translate_queries(queries, category_dict):
-    """Переводит SQL-запросы на понятный язык и заменяет ID категорий на их названия"""
-    translations = {
-        'fc.category_id': 'категория',
-        'f.title': 'название',
-        'a.first_name': 'имя актера',
-        'a.last_name': 'фамилия актера',
-        'f.release_year': 'год выпуска'
-    }
-    
-    def clean_query(query):
-        for key, value in translations.items():
-            query = query.replace(key, value)
-        query = query.replace('WHERE', '').replace('LIKE', '').replace(',', '').replace('%', '').strip()
-        query = query.replace('AND', 'и')
-        for cat_id, cat_name in category_dict.items():
-            query = query.replace(str(cat_id), cat_name)
-        return query
-    
-    translated_queries = [clean_query(query) for query in queries]
-    return translated_queries
-
-
 def fetch_category_dict():
     """Получение словаря категорий из базы данных"""
     connection = ich_connect()
@@ -102,12 +136,7 @@ def insert_query(query_key):
 
 def fetch_category_list():
     """Получение списка категорий и вывод его в виде таблицы"""
-    connection = ich_connect()
-    cursor = connection.cursor()
-    cursor.execute(query_dict('category_query'))
-    results = cursor.fetchall()
-    clear_screen()
-    
+    results = load_category_dict_from_file()
     column_count = 4
     row_count = len(results) // column_count + (len(results) % column_count > 0)
     columns = [results[i * row_count:(i + 1) * row_count] for i in range(column_count)]
@@ -128,8 +157,6 @@ def fetch_category_list():
                 print(' ' * 30, end=' ')
         print()
     
-    cursor.close()
-    disconnect(connection)
     return results
 
 
@@ -149,10 +176,22 @@ def show_top_queries():
     """Показ самых частых запросов с заменой ID категорий на их названия"""
     top_queries = get_top_queries()
     category_dict = fetch_category_dict()
-    translated_queries = translate_queries(top_queries, category_dict)
+    translated_queries = []
+    
+    for query, count in top_queries:
+        # Разбиваем запрос по "AND", обрабатываем каждую часть отдельно
+        parts = query.split(' AND ')
+        translated_parts = []
+        for part in parts:
+            translated_part = translate_queries([part], category_dict)[0]
+            translated_parts.append(translated_part)
+        # Соединяем обработанные части обратно в одну строку с "AND"
+        translated_query = ' и '.join(translated_parts)
+        translated_queries.append([translated_query, count])
+    
     clear_screen()
     print("Самые частые запросы:")
-    print(tabulate(translated_queries, tablefmt='rounded_grid'))
+    print(tabulate(translated_queries, headers=["Запросы", "Количество"], tablefmt='rounded_grid'))
     input("\nНажмите Enter, чтобы вернуться в главное меню...")
 
 
@@ -170,7 +209,7 @@ def get_top_queries() -> list:
     results = cursor.fetchall()
     cursor.close()
     disconnect(connection)
-    return [result[0] for result in results]
+    return results
 
 
 def filter_selection_title() -> str:
