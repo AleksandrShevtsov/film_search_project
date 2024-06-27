@@ -242,8 +242,7 @@ def film_list(query_filter):
     cursor.execute(query)
     results = cursor.fetchall()
     if not results:
-        print('Ничего не найдено')
-        input('Нажмите Enter, чтобы вернуться в главное меню...')
+        print('Нет данных по вашему запросу. Нажмите Enter, чтобы вернуться в главное меню...')
         return
     clear_screen()
     print(tabulate(results, headers=['Имя актера', 'Фамилия актера', 'Название фильма', 'Описание', 'Год выпуска'],
