@@ -3,6 +3,10 @@ import os
 from tabulate import tabulate
 
 
+def decorator(function):
+    def wrapper():
+        function()
+        
 def mydb_connect():
     """Подключение к первой базе данных MySQL"""
     config = {
@@ -32,7 +36,15 @@ def disconnect(connection):
     connection.close()
 
 
-
+def execute_connection(dbconnection, query):
+    """Выполнение SQL-запроса"""
+    connection = dbconnection
+    cursor = connection.cursor()
+    results = cursor.execute(query)
+    cursor.close()
+    disconnect(connection)
+    return results
+    
 
 # Переводит SQL-запросы на понятный язык и заменяет  поля на названия понятные для пользователя
 def translate_queries(queries, category_dict):
@@ -98,24 +110,15 @@ def query_dict(query_key) -> str:
 
 def fetch_category_dict():
     """Получение словаря категорий из базы данных"""
-    connection = ich_connect()
-    cursor = connection.cursor()
-    cursor.execute(query_dict('category_query'))
-    categories = cursor.fetchall()
-    cursor.close()
-    disconnect(connection)
+    categories = execute_connection(ich_connect(), query_dict('category_query'))
     return {category_id: name for category_id, name in categories}
 
 
 def insert_query(query_key):
     """Вставка запроса в таблицу рейтинга"""
-    connection = mydb_connect()
-    cursor = connection.cursor()
     query = 'INSERT INTO rating (rating_list) VALUES (%s)'
-    cursor.execute(query, (query_key,))
-    connection.commit()
-    cursor.close()
-    disconnect(connection)
+    execute_connection(mydb_connect(), (query, (query_key,)))
+
 
 
 def fetch_category_list():
