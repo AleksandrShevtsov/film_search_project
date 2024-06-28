@@ -18,6 +18,7 @@ ich1dbconfig = {
     'host': 'ich-db.ccegls0svc9m.eu-central-1.rds.amazonaws.com',
     'database': 'sakila',
     'raise_on_warnings': True
+    
 }
 
 
@@ -79,7 +80,7 @@ def translate_queries(queries, category_dict):
 def query_dict(query_key) -> str:
     queries = {
         'main_query': '''
-            SELECT a.first_name, a.last_name, f.title, f.description, f.release_year
+            SELECT a.first_name, a.last_name, f.title, f.description, f.release_year, c.name
             FROM film f
             {joins}
             {filters}
@@ -87,7 +88,8 @@ def query_dict(query_key) -> str:
             LIMIT 10
         ''',
         'actor_join': 'JOIN film_actor fa ON f.film_id = fa.film_id JOIN actor a ON fa.actor_id = a.actor_id',
-        'category_join': 'JOIN film_category fc ON f.film_id = fc.film_id JOIN category c ON fc.category_id = c.category_id',
+        'category_join': 'JOIN film_category fc ON f.film_id = fc.film_id '
+                         'JOIN category c ON fc.category_id = c.category_id',
         'group_by_film': 'GROUP BY f.title',
         'group_by_actor': 'GROUP BY a.actor_id',
         'group_by_category': 'GROUP BY c.category_id',
@@ -240,7 +242,8 @@ def film_list(query_filter):
         input()
         return
     clear_screen()
-    print(tabulate(results, headers=['Имя актера', 'Фамилия актера', 'Название фильма', 'Описание', 'Год выпуска'],
+    print(tabulate(results,
+                   headers=['Имя актера', 'Фамилия актера', 'Название фильма', 'Описание', 'Год выпуска', 'Жанр'],
                    tablefmt='rounded_grid'))
     print('\nНажмите Enter, чтобы вернуться в главное меню или 0 для выхода...')
     if input() == '0':
