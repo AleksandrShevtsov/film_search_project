@@ -18,7 +18,6 @@ ich1dbconfig = {
     'host': 'ich-db.ccegls0svc9m.eu-central-1.rds.amazonaws.com',
     'database': 'sakila',
     'raise_on_warnings': True
-    
 }
 
 
@@ -201,13 +200,28 @@ def filter_selection_actor() -> str:
 
 def filter_selection_category_year() -> str:
     filters = []
-    category_dict = fetch_category_list()
-    category_id = input('Выберите один из жанров цифрами: ')
-    if category_id.isdigit() and int(category_id) in category_dict:
-        filters.append("fc.category_id = {}".format(category_id))
-    year = input('Введите год выпуска: ')
-    if year.isdigit() and (1900 <= int(year) <= 2024):
-        filters.append("f.release_year = {}".format(year))
+    fetch_category_list()
+    
+    while True:
+        category_id = input('Выберите один из жанров цифрами (от 1 до 16) или оставьте пустым для пропуска: ')
+        if category_id == '':
+            break
+        if category_id.isdigit() and 1 <= int(category_id) <= 16:
+            filters.append("fc.category_id = {}".format(category_id))
+            break
+        else:
+            print("Некорректный ввод. Пожалуйста, введите число от 1 до 16 или оставьте пустым для пропуска.")
+    
+    while True:
+        year = input('Введите год выпуска (от 1980 до 2024) или оставьте пустым для пропуска: ')
+        if year == '':
+            break
+        if year.isdigit() and 1980 <= int(year) <= 2024:
+            filters.append("f.release_year = {}".format(year))
+            break
+        else:
+            print("Некорректный ввод. Пожалуйста, введите год от 1980 до 2024 или оставьте пустым для пропуска.")
+    
     if filters:
         return ' AND '.join(filters)
     return ''
