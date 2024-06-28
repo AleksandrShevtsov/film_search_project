@@ -2,33 +2,27 @@ import mysql.connector
 import os
 from tabulate import tabulate
 
+# Подключение к первой базе данных MySQL
+mydbconfig = {
+    'user': 'ich1',
+    'password': 'ich1_password_ilovedbs',
+    'host': 'mysql.itcareerhub.de',
+    'database': 'project_220424ptm_OShevtsov',
+    'raise_on_warnings': True
+}
 
-def decorator(function):
-    def wrapper():
-        function()
-        
-def mydb_connect():
-    """Подключение к первой базе данных MySQL"""
-    config = {
-        'user': 'ich1',
-        'password': 'ich1_password_ilovedbs',
-        'host': 'mysql.itcareerhub.de',
-        'database': 'project_220424ptm_OShevtsov',
-        'raise_on_warnings': True
-    }
-    return mysql.connector.connect(**config)
+# Подключение ко второй базе данных MySQL
+ich1dbconfig = {
+    'user': 'ich1',
+    'password': 'password',
+    'host': 'ich-db.ccegls0svc9m.eu-central-1.rds.amazonaws.com',
+    'database': 'sakila',
+    'raise_on_warnings': True
+}
 
 
-def ich_connect():
-    """Подключение ко второй базе данных MySQL"""
-    config = {
-        'user': 'ich1',
-        'password': 'password',
-        'host': 'ich-db.ccegls0svc9m.eu-central-1.rds.amazonaws.com',
-        'database': 'sakila',
-        'raise_on_warnings': True
-    }
-    return mysql.connector.connect(**config)
+def connect_to_db(dbconfig):
+    return mysql.connector.connect(**dbconfig)
 
 
 def disconnect(connection):
@@ -36,17 +30,18 @@ def disconnect(connection):
     connection.close()
 
 
-def execute_connection(dbconnection, query):
-    """Выполнение SQL-запроса"""
-    connection = dbconnection
+def execute_query(query, dbconfig, fetch=True):
+    connection = connect_to_db(dbconfig)
     cursor = connection.cursor()
-    results = cursor.execute(query)
+    cursor.execute(query)
+    result = cursor.fetchall() if fetch else None
+    connection.commit() if not fetch else None
     cursor.close()
     disconnect(connection)
-    return results
-    
+    return result
 
-# Переводит SQL-запросы на понятный язык и заменяет  поля на названия понятные для пользователя
+
+# Переводит SQL-запросы на понятный язык и заменяет поля на названия, понятные для пользователя
 def translate_queries(queries, category_dict):
     translations = {
         'fc.category_id': 'Жанр',
@@ -55,38 +50,33 @@ def translate_queries(queries, category_dict):
         'a.last_name': 'фамилия актера',
         'f.release_year': 'год выпуска'
     }
-    
+
     def clean_query(query):
-        query = query.replace('WHERE', '').replace('LIKE', '').replace(',', '').replace('%', '').strip()
-        # Разбиваем запрос на части по "AND"
+        query = query.replace('WHERE', '').replace('LIKE', '').replace(',%', '').replace('=', '').strip()
         parts = query.split(' AND ')
-        
+
         translated_parts = []
-        
+
         for part in parts:
             for key, value in translations.items():
-                if str(key) in part:
-                    part = part.replace(str(key), value)
+                if key in part:
+                    part = part.replace(key, value)
                     if 'Жанр' in part:
                         part = part.split()
-                        print(category_dict)
-                        part[1] = category_dict.get(int(part[1]))
-                        print(part[1])
+                        part[1] = category_dict.get(int(part[1]), part[1])
                         part = ' '.join(part)
-            
+
             translated_parts.append(part)
-        
-        # Соединяем обработанные части обратно в одну строку с "AND"
+
         translated_query = ' AND '.join(translated_parts)
-        
+
         return translated_query
-    
+
     translated_queries = [clean_query(query) for query in queries]
     return translated_queries
 
 
 def query_dict(query_key) -> str:
-    """Возвращает строку SQL-запроса в зависимости от ключа"""
     queries = {
         'main_query': '''
             SELECT a.first_name, a.last_name, f.title, f.description, f.release_year
@@ -109,33 +99,26 @@ def query_dict(query_key) -> str:
 
 
 def fetch_category_dict():
-    """Получение словаря категорий из базы данных"""
-    categories = execute_connection(ich_connect(), query_dict('category_query'))
+    categories = execute_query(query_dict('category_query'), ich1dbconfig)
     return {category_id: name for category_id, name in categories}
 
 
 def insert_query(query_key):
-    """Вставка запроса в таблицу рейтинга"""
-    query = 'INSERT INTO rating (rating_list) VALUES (%s)'
-    execute_connection(mydb_connect(), (query, (query_key,)))
-
+    query = 'INSERT INTO rating (rating_list) VALUES ("{}")'.format(query_key)
+    execute_query(query, mydbconfig, fetch=False)
 
 
 def fetch_category_list():
-    """Получение списка категорий и вывод его в виде таблицы"""
     results = fetch_category_dict()
-    
-    # Преобразуем словарь категорий в список кортежей (ID, название)
     category_tuples = [(category_id, name) for category_id, name in results.items()]
-    
-    # Разбиваем список категорий на колонки
+
     column_count = 4
     columns = [[] for _ in range(column_count)]
-    
+
     for index, (category_id, name) in enumerate(category_tuples):
         column_index = index % column_count
         columns[column_index].append((category_id, name))
-    
+
     tables = []
     headers = ['№', 'Жанр']
     for col_index, col in enumerate(columns):
@@ -143,9 +126,9 @@ def fetch_category_list():
         for row_index, (category_id, name) in enumerate(col, start=1):
             table.append(["{}".format(category_id), name])
         tables.append(tabulate(table, headers=headers, tablefmt='rounded_grid'))
-    
+
     max_lines = max(len(table.split('\n')) for table in tables)
-    
+
     for i in range(max_lines):
         for table in tables:
             table_lines = table.split('\n')
@@ -154,16 +137,14 @@ def fetch_category_list():
             else:
                 print(' ' * 20, end=' ')
         print()
-    
+
     return results
 
 
 def create_table(table):
-    """Создание и отображение меню выбора"""
     table_list = {
         'main_table': [['1', 'Название фильма'], ['2', 'Имя актёра'], ['3', 'Жанр\nГод выпуска'],
-                       ['4', 'Показать 5 самых частых запросов'], ['0', 'Выход']],
-        'category_year_table': [['1', 'Жанр'], ['2', 'Год выпуска'], ['3', 'Жанр и\nГод выпуска'], ['0', 'Выход']],
+                       ['4', 'Показать 5 самых частых запросов'], ['0', 'Выход']]
     }
     clear_screen()
     table = table_list.get(table)
@@ -171,22 +152,19 @@ def create_table(table):
 
 
 def show_top_queries():
-    """Показ самых частых запросов с заменой ID категорий на их названия"""
     top_queries = get_top_queries()
     category_dict = fetch_category_dict()
     translated_queries = []
-    
+
     for query, count in top_queries:
-        # Разбиваем запрос по "AND", обрабатываем каждую часть отдельно
         parts = query.split(' AND ')
         translated_parts = []
         for part in parts:
             translated_part = translate_queries([part], category_dict)[0]
             translated_parts.append(translated_part)
-        # Соединяем обработанные части обратно в одну строку с "AND"
         translated_query = ' и '.join(translated_parts)
         translated_queries.append([translated_query, count])
-    
+
     clear_screen()
     print("Самые частые запросы:")
     print(tabulate(translated_queries, headers=["Запросы", "Количество"], tablefmt='rounded_grid'))
@@ -194,30 +172,21 @@ def show_top_queries():
 
 
 def clear_screen():
-    """Очистка экрана"""
     os.system('cls' if os.name == 'nt' else 'clear')
 
 
 def get_top_queries() -> list:
-    """Получение топ-5 самых частых запросов из таблицы рейтинга"""
-    connection = mydb_connect()
-    cursor = connection.cursor()
     query = 'SELECT rating_list, COUNT(*) as count FROM rating GROUP BY rating_list ORDER BY count DESC LIMIT 5'
-    cursor.execute(query)
-    results = cursor.fetchall()
-    cursor.close()
-    disconnect(connection)
+    results = execute_query(query, mydbconfig)
     return results
 
 
 def filter_selection_title() -> str:
-    """Фильтрация по названию фильма"""
     title = input('Введите название фильма: ').upper()
     return "f.title LIKE '%{}%'".format(title)
 
 
 def filter_selection_actor() -> str:
-    """Фильтрация по имени и фамилии актера"""
     filters = []
     actor_first_name = input('Введите имя актёра: ').upper()
     if actor_first_name:
@@ -229,28 +198,20 @@ def filter_selection_actor() -> str:
 
 
 def filter_selection_category_year() -> str:
-    """Фильтрация по категории и/или году выпуска"""
     filters = []
-    create_table('category_year_table')
-    user_choice = input('Выберите один из вариантов цифрами: ')
-    if '1' in user_choice:
-        fetch_category_list()
-        category_id = input('Выберите один из жанров цифрами: ')
-        filters.append("fc.category_id LIKE {}".format(category_id))
-    if '2' in user_choice:
-        year = input('Введите год выпуска: ')
-        filters.append("f.release_year LIKE {}".format(year))
-    if '3' in user_choice:
-        fetch_category_list()
-        category_id = input('Выберите один из жанров цифрами: ')
-        filters.append("fc.category_id LIKE {}".format(category_id))
-        year = input('Введите год выпуска: ')
-        filters.append("f.release_year LIKE {}".format(year))
-    return ' AND '.join(filters)
+    category_dict = fetch_category_list()
+    category_id = input('Выберите один из жанров цифрами: ')
+    if category_id.isdigit() and int(category_id) in category_dict:
+        filters.append("fc.category_id = {}".format(category_id))
+    year = input('Введите год выпуска: ')
+    if year.isdigit() and (1900 <= int(year) <= 2024):
+        filters.append("f.release_year = {}".format(year))
+    if filters:
+        return ' AND '.join(filters)
+    return ''
 
 
 def filter_selection(user_choice) -> str:
-    """Выбор фильтрации по выбранному пользователем критерию"""
     filters = []
     if '1' in user_choice:
         filters.append(filter_selection_title())
@@ -268,25 +229,20 @@ def filter_selection(user_choice) -> str:
 
 
 def film_list(query_filter):
-    """Получение и отображение списка фильмов по заданным фильтрам"""
-    connection = ich_connect()
-    cursor = connection.cursor()
     query = query_dict('main_query').format(
         joins=query_dict('actor_join') + ' ' + query_dict('category_join'),
         filters=query_filter,
         group_by=query_dict('group_by_film')
     )
-    cursor.execute(query)
-    results = cursor.fetchall()
+    results = execute_query(query, ich1dbconfig)
     if not results:
         print('Нет данных по вашему запросу. Нажмите Enter, чтобы вернуться в главное меню...')
+        input()
         return
     clear_screen()
     print(tabulate(results, headers=['Имя актера', 'Фамилия актера', 'Название фильма', 'Описание', 'Год выпуска'],
                    tablefmt='rounded_grid'))
     print('\nНажмите Enter, чтобы вернуться в главное меню или 0 для выхода...')
-    cursor.close()
-    disconnect(connection)
     if input() == '0':
         quit()
 
